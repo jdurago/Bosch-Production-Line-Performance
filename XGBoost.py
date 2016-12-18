@@ -8,10 +8,8 @@ from xgboost import plot_importance
 from sklearn.metrics import matthews_corrcoef, roc_auc_score
 from sklearn.cross_validation import cross_val_score, StratifiedKFold
 import matplotlib.pyplot as plt
-import seaborn as sns
 import csv
 import gc
-from sklearn.grid_search import GridSearchCV
 
 PLOT_FEATURES = True
 PRE_PROCESS_CATEGORICAL_DATA = False
@@ -28,13 +26,16 @@ train_numerical_filename = 'train_numeric.csv'
 train_date_filename = 'train_date.csv'
 train_categorical_filename = 'train_categorical.csv'
 train_categorical_leaveoneout_filename = 'train_categorical_leaveoneout.csv'
-train_date_24hr_filename = 'train_date_1week.csv'
+train_date_1wk_filename = 'train_date_1week.csv'
 
 test_numerical_filename = 'test_numeric.csv'
 test_date_filename = 'test_date.csv'
 test_categorical_filename = 'test_categorical.csv'
 test_categorical_leaveoneout_filename = 'test_categorical_leaveoneout.csv'
-test_date_24hr_filename = 'test_date_1week.csv'
+test_date_1wk_filename = 'test_date_1week.csv'
+
+## Files below are small sample of data
+## Uncomment for debug and development purposes
 
 #submission_sample_filename = 'sample_submission_smallsample.csv'
 #submission_filename = 'submission.csv'
@@ -52,12 +53,11 @@ test_date_24hr_filename = 'test_date_1week.csv'
 #test_date_24hr_filename = 'test_date_24hrsmallsample.csv'
 
 
-
 def leave_one_out_encode(series):
     """
-    Calculation of leave-one-out encoding
+    Calculate response value for leave-one-out encoding
     :param series:
-    :return:
+    :return: series: series with calculated response
     """
     series = (series.sum() - series) / (len(series) - 1)
     return series
@@ -66,13 +66,12 @@ def leave_one_out_encode(series):
 def categorical_to_numeric(train_data, test_data, response_col_name):
     """
     Encodes categorical train and test data using leave-one-out technique
-    :param train_data:
-    :param test_data:
-    :param response_col_name:
-    :return:
+    :param train_data: categorical train data frame to be encoded
+    :param test_data: categorical test data frame to be encoded
+    :param response_col_name: response column name of test data
+    :return: train_date, test_data: these are the converted dataframes with encoded categories
     """
 
-    # TODO determine why test_categorical_leaveoneout isn't providing correct values, all columns set to mean instead of ones with desired label
     for col_name in train_data.columns:
         if col_name not in ['Id', 'Response']:
             mean = train_data.groupby(by=[col_name])[response_col_name].mean()
@@ -81,7 +80,6 @@ def categorical_to_numeric(train_data, test_data, response_col_name):
                 mean = np.nan
             else:
                 mean = mean[0]
-            # test_data[col_name].replace(to_replace=mean, inplace=True)
             test_data[col_name] = mean
 
             one_hot_encoded = train_data.groupby(by=[col_name])[response_col_name].apply(leave_one_out_encode)
@@ -92,9 +90,13 @@ def categorical_to_numeric(train_data, test_data, response_col_name):
 
 
 def get_data(directory, file_list, data_type_list, use_col_list):
-    # type: (str, list) -> pd.DataFrame
+    # type: (str, list, list, list) -> pd.DataFrame
     """
-    :rtype: object
+    :param directory: input directory location
+    :param file_list: list of files to read
+    :param data_type_list: list of data types for each file (ex. int, str, etc)
+    :param use_col_list: list of columns to read from
+    :return: dataframe of all files
     """
 
     data = None
@@ -122,6 +124,11 @@ def get_data(directory, file_list, data_type_list, use_col_list):
 
 
 def pre_process_categorical_data():
+    # type: () -> bool
+    """
+    method for pre processing the categorical data
+    :rtype: bool
+    """
     directory = 'input/'
     trainfiles = [train_categorical_filename,
                   train_numerical_filename]
@@ -129,7 +136,7 @@ def pre_process_categorical_data():
 
     with open(INPUT_DIRECTORY + train_categorical_filename) as f:
         reader = csv.reader(f)
-        Cat_columns = next(reader)  # gets the first line
+        Cat_columns = next(reader)  # Obtains header names from file
 
     cols = [Cat_columns,
             ['Id',
@@ -157,7 +164,7 @@ def pre_process_categorical_data():
         del subset
         gc.collect()
 
-    del cols[1][-1]  # Test doesn't have response!
+    del cols[1][-1]  # Remove this column, test data doesn't have a response
     for i, f in enumerate(testfiles):
         print(f)
         subset = None
@@ -185,8 +192,13 @@ def pre_process_categorical_data():
     testdata.to_csv(INPUT_DIRECTORY + test_categorical_leaveoneout_filename)
     return True
 
-def pre_process_rawdate_to_24hrdate():
-    # converts raw date data into 24 hour time periods
+
+def pre_process_date_data():
+    # type: () -> bool
+    """
+    pre processes date data to rolling weekly format
+    :rtype: bool
+    """
     directory = INPUT_DIRECTORY
     trainfiles = [train_date_filename]
     testfiles = [test_date_filename]
@@ -233,14 +245,21 @@ def pre_process_rawdate_to_24hrdate():
         del subset
         gc.collect()
 
-    traindata = date_dataframe_converter(traindata, 100.8)
+    traindata = date_dataframe_converter(traindata, 100.8) # change value for desired format (24 hrs = 14.4, 1 week = 100.8)
     testdata = date_dataframe_converter(testdata, 100.8)
 
-    traindata.to_csv(INPUT_DIRECTORY + train_date_24hr_filename)
-    testdata.to_csv(INPUT_DIRECTORY + test_date_24hr_filename)
+    traindata.to_csv(INPUT_DIRECTORY + train_date_1wk_filename)
+    testdata.to_csv(INPUT_DIRECTORY + test_date_1wk_filename)
     return True
 
+
 def date_dataframe_converter(df, constant):
+    # type: (df, float) -> df
+    """
+    modifies data frame to rolling 24hr or weekly format, this value is determined by constant
+
+    :rtype: object
+    """
     col_list = list(df.columns.values)
     if 'Id' in col_list:
         col_list.remove('Id')
@@ -254,7 +273,15 @@ def date_dataframe_converter(df, constant):
 
     return df
 
+
 def get_xgb_imp(xgb, feat_names):
+    # type: (xgboost classifier, str) -> object
+    """
+    returns important features from xgboost classifier
+    :param xgb: xgboost classifier class
+    :param feat_names:
+    :return:
+    """
     from numpy import array
     imp_vals = xgb.booster().get_fscore()
     imp_dict = {feat_names[i]: float(imp_vals.get('f' + str(i), 0.)) for i in range(len(feat_names))}
@@ -263,11 +290,12 @@ def get_xgb_imp(xgb, feat_names):
 
 
 def important_cols2file_cols(important_cols, file_name):
+    # type: (list, str) -> list
     """
     returns list of columns that are in both important_cols and in the file
     :param important_cols:
-    :param filename:
-    :return:
+    :param file_name:
+    :return: file_cols: list of files that were identified as important
     """
 
     with open(file_name) as f:
@@ -280,6 +308,13 @@ def important_cols2file_cols(important_cols, file_name):
 
 
 def identify_important_features(training_date_filename, training_numerical_filename):
+    # type: (str, str) -> list
+    """
+    samples training data, fits initial xgboost classifier and identifies important features
+    :param training_date_filename:
+    :param training_numerical_filename:
+    :rtype: important_columns: list of important columns
+    """
     date_chunks = pd.read_csv(INPUT_DIRECTORY + training_date_filename, index_col=0, chunksize=CHUNKSIZE, dtype=np.float32)
     num_chunks = pd.read_csv(INPUT_DIRECTORY + training_numerical_filename, index_col=0, usecols=list(range(969)),
                              chunksize=CHUNKSIZE, dtype=np.float32)
@@ -301,40 +336,33 @@ def identify_important_features(training_date_filename, training_numerical_filen
         fig.savefig(OUTPUT_DIRECTORY + 'xgboost_hist.png')
         plt.close(fig)
 
-	fig, ax = plt.subplots(figsize=(20,50))
-	plt.xlabel('xlabel', fontsize=18)
-	plt.ylabel('ylabel', fontsize=18)
-	plt.xticks(size=12)
-	plt.yticks(size=12)
-	myplt = plot_importance(clf, ax=ax)
-	fig.savefig(OUTPUT_DIRECTORY + 'xgboost_importantfeatures.png')
-	plt.close(fig)
+    fig, ax = plt.subplots(figsize=(20,50))
+    plt.xlabel('xlabel', fontsize=18)
+    plt.ylabel('ylabel', fontsize=18)
+    plt.xticks(size=12)
+    plt.yticks(size=12)
+    myplt = plot_importance(clf, ax=ax)
+    fig.savefig(OUTPUT_DIRECTORY + 'xgboost_importantfeatures.png')
+    plt.close(fig)
 
-    ##### UNCOMMENT THIS WHEN DONE TROUBLESHOOTING
     important_indices = np.where(clf.feature_importances_ > 0.005)[0]
-
-    ### DELETE THIS WHEN DONE TROUBLESHOOTING
-    # important_indices = """34  125  939 1018 1019 1029 1034 1038 1050 1156 1157 1164 1166 1168 1169
-    #                      1180 1188 1197 1209 1210 1219 1234 1247 1250 1254 1258 1269 1271 1272 1277
-    #                      1318 1320 1349 1350 1493 1497 1501 1516 1520 1531 1548 1549 1550 1839 1840
-    #                      1844 1846 1847 1851 1883 1884 1887 1888 1889 1926 1932 1934 1935 1949 1954
-    #                      1961 1969 1985 1994 1995 2006 2007 2010 2022 2028 2046""".split()
-    # important_indices = [int(i) for i in important_indices]
-    #### END DELETE
-
 
     important_columns = [col for i, col in enumerate(col_list) if
                          i in important_indices]  # converts important_indices to col names
     print(important_columns)
-
     return important_columns
 
 
 def load_train_data(important_cols, training_date_filename, training_numerical_filename):
-    # load entire dataset for these features.
-    # note where the feature indices are split so we can load the correct ones straight from read_csv
-    n_date_features = 1156
+    # type: (list, str, str) -> pd.DataFrame, pd.DataFrame
 
+    """
+
+    :param important_cols: list of important columns
+    :param training_date_filename:
+    :param training_numerical_filename:
+    :return: X,y: X is training data, y is the response column
+    """
     important_date_cols = important_cols2file_cols(important_cols, INPUT_DIRECTORY + training_date_filename)
     important_date_cols.append('Id')
     important_num_cols = important_cols2file_cols(important_cols, INPUT_DIRECTORY + training_numerical_filename)
@@ -354,6 +382,14 @@ def load_train_data(important_cols, training_date_filename, training_numerical_f
 
 
 def train_data(clf, X, response):
+    # type: (xgboost classifier, pd.DataFrame, pd.DataFrame) -> xgboost classifier, float
+    """
+
+    :param clf: xgboost classfiier
+    :param X: training data dataframe
+    :param response: response dataframe
+    :return: clf, best_threshold: returns trained classifier. best_threshold is threshold for determing pass/failing part in predictions
+    """
     cv = StratifiedKFold(response, n_folds=7)
     preds = np.ones(response.shape[0])
     for i, (train, test) in enumerate(cv):
@@ -375,8 +411,14 @@ def train_data(clf, X, response):
 
 
 def load_test_data(important_cols, date_filename, numerical_filename):
-    # load test data
-
+    # type: (list, str, str) -> pd.DataFrame
+    """
+    loads only important columns of test data
+    :param important_cols: list of important columns
+    :param date_filename:
+    :param numerical_filename:
+    :return: returns dataframe with only important columns
+    """
     important_date_cols = important_cols2file_cols(important_cols, INPUT_DIRECTORY + date_filename)
     important_date_cols.append('Id')
     important_num_cols = important_cols2file_cols(important_cols, INPUT_DIRECTORY + numerical_filename)
@@ -393,7 +435,14 @@ def load_test_data(important_cols, date_filename, numerical_filename):
 
 
 def predict_and_submit(test_data, best_threshold, clf):
+    # type: (pd.DataFrame, float, xgboost classifier) -> None
     # generate predictions at the chosen threshold
+    """
+    uses classifer to make predictions. Predictions are saved into a csv
+    :param test_data: dataframe for test_data
+    :param best_threshold: threshold for evaluating passing/failing part
+    :param clf: xgboost classifier
+    """
     preds = (clf.predict_proba(test_data)[:, 1] > best_threshold).astype(np.int8)
 
     # and submit
@@ -413,23 +462,17 @@ if __name__ == '__main__':
 
     if PRE_PROCESS_DATE_DATA:
         print('Started Pre Processing Date Data')
-        pre_process_rawdate_to_24hrdate()
+        pre_process_date_data()
         print('Finished Pre Processing Date Data')
 
     print('Started important_cols')
-    important_cols = identify_important_features(train_date_24hr_filename, train_numerical_filename)
+    important_cols = identify_important_features(train_date_1wk_filename, train_numerical_filename)
     print('Finished important_cols')
 
     print('Started loading train data')
-    train, response = load_train_data(important_cols, train_date_24hr_filename, train_numerical_filename)
+    train, response = load_train_data(important_cols, train_date_1wk_filename, train_numerical_filename)
     print('Finished loading train data')
-    
-    parameters = {
-        'learning_rate': [0.05, 0.1, 0.3],
-        'max_depth': [6, 9, 12],
-        'subsample': [0.9, 1.0],
-        'colsample_bytree': [0.9, 1.0],
-    }
+
     param = {}
     param['learning_rate'] = 0.05
     param['max_depth'] = 9
@@ -437,16 +480,10 @@ if __name__ == '__main__':
     param['colsample_bytree'] = 0.9
     param['base_score'] = 0.005
     clf = XGBClassifier(**param)
-    #clf = GridSearchCV(clf, parameters, cv=StratifiedKFold(response, n_folds=7))
-    #clf.fit(train, response)
-    #best_parameters, score, _ = max(clf.grid_scores_, key=lambda x: x[1])
-    #print('score ' + score )
-    #for param_name in sorted(best_parameters.keys()):
-    #    print("%s: %r" % (param_name, best_parameters[param_name]))
 
     clf, best_threshold = train_data(clf, train, response)
     print('Finished training')
-    test_data = load_test_data(important_cols, test_date_24hr_filename, test_numerical_filename)
+    test_data = load_test_data(important_cols, test_date_1wk_filename, test_numerical_filename)
     predict_and_submit(test_data, best_threshold, clf)
 
     print('Finished')
