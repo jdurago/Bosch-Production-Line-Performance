@@ -8,6 +8,9 @@ I recommend using at a minimum r3.xlarge aws ec2 instance to process and model a
 
 #Dependencies
 xgboost
+
 numpy
+
 pandas
+
 sklearn
