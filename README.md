@@ -22,3 +22,7 @@ Below are the required python packages:
 ### Hardware
 I recommend using at a minimum r3.xlarge aws ec2 instance to process and model all the data.I used a r3.8xlarge instance during development and hyperparameter tuning steps for increased processing times.
 
+### Run
+In a terminal or command window, navigate to the top-level project directory (that contains this README) and run one of the following commands:
+
+    python XGBoost.py
